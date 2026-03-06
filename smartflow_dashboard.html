@@ -1,0 +1,972 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SmartFlow — Intelligent Traffic Controller</title>
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@300;400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #060a10;
+    --surface: #0c1420;
+    --surface2: #111d2e;
+    --border: #1a3050;
+    --accent: #00d4ff;
+    --accent2: #00ff9d;
+    --red: #ff3d5a;
+    --amber: #ffb800;
+    --green: #00ff9d;
+    --emergency: #ff3d5a;
+    --text: #c8dff0;
+    --dim: #4a6a8a;
+    --glow: rgba(0,212,255,0.15);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Rajdhani', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    overflow-x: hidden;
+    background-image:
+      radial-gradient(ellipse 80% 60% at 50% -10%, rgba(0,100,180,0.08) 0%, transparent 70%),
+      linear-gradient(180deg, #060a10 0%, #040810 100%);
+  }
+
+  /* ── Grid scanlines ── */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image:
+      linear-gradient(rgba(0,212,255,0.015) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,212,255,0.015) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .container {
+    max-width: 1300px;
+    margin: 0 auto;
+    padding: 24px 20px;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* ── Header ── */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 28px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    margin-bottom: 20px;
+    position: relative;
+    overflow: hidden;
+  }
+  header::after {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--accent), var(--accent2), transparent);
+    animation: headerPulse 3s ease-in-out infinite;
+  }
+  @keyframes headerPulse {
+    0%, 100% { opacity: 0.5; }
+    50% { opacity: 1; }
+  }
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  .logo-icon {
+    width: 44px; height: 44px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+  }
+  .traffic-light-mini {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    background: #0a1520;
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 6px 5px;
+  }
+  .light-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+  }
+  .light-dot.r { background: var(--red); box-shadow: 0 0 8px var(--red); }
+  .light-dot.a { background: var(--amber); opacity: 0.3; }
+  .light-dot.g { background: var(--green); opacity: 0.3; animation: greenPulse 2s ease-in-out infinite; }
+  @keyframes greenPulse {
+    0%,100% { opacity: 0.3; }
+    50% { opacity: 1; box-shadow: 0 0 10px var(--green); }
+  }
+  .logo-text h1 {
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: 4px;
+    color: #fff;
+    text-transform: uppercase;
+  }
+  .logo-text h1 span { color: var(--accent); }
+  .logo-text p {
+    font-size: 11px;
+    letter-spacing: 3px;
+    color: var(--dim);
+    text-transform: uppercase;
+    font-family: 'Share Tech Mono', monospace;
+  }
+  .header-stats {
+    display: flex;
+    gap: 32px;
+  }
+  .hstat {
+    text-align: center;
+  }
+  .hstat-val {
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--accent);
+    font-family: 'Share Tech Mono', monospace;
+    line-height: 1;
+    transition: all 0.3s;
+  }
+  .hstat-val.emergency { color: var(--red); }
+  .hstat-val.cleared { color: var(--green); }
+  .hstat-label {
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: var(--dim);
+    text-transform: uppercase;
+    margin-top: 4px;
+  }
+
+  /* ── Layout ── */
+  .main-grid {
+    display: grid;
+    grid-template-columns: 1fr 380px;
+    gap: 20px;
+  }
+
+  /* ── Panel ── */
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .panel-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+    background: rgba(0,0,0,0.2);
+  }
+  .panel-header-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 6px var(--accent);
+    animation: blink 2s ease-in-out infinite;
+  }
+  @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+  .panel-title {
+    font-size: 11px;
+    letter-spacing: 3px;
+    color: var(--dim);
+    text-transform: uppercase;
+    font-family: 'Share Tech Mono', monospace;
+  }
+
+  /* ── Intersection Visualizer ── */
+  .intersection-panel { position: relative; }
+  .intersection-canvas {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 40px;
+    min-height: 480px;
+    position: relative;
+  }
+
+  /* Roads */
+  .road-grid {
+    position: relative;
+    width: 420px;
+    height: 420px;
+    flex-shrink: 0;
+  }
+  .road-h, .road-v {
+    position: absolute;
+    background: #0d1a28;
+    border: 1px solid var(--border);
+  }
+  .road-h { left: 0; right: 0; top: 50%; transform: translateY(-50%); height: 90px; }
+  .road-v { top: 0; bottom: 0; left: 50%; transform: translateX(-50%); width: 90px; }
+  .road-center {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 90px; height: 90px;
+    background: #0d1a28;
+    border: 1px solid var(--border);
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .road-center-label {
+    font-size: 9px;
+    letter-spacing: 1px;
+    color: var(--dim);
+    text-align: center;
+    font-family: 'Share Tech Mono', monospace;
+  }
+
+  /* Lane boxes */
+  .lane-box {
+    position: absolute;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    z-index: 5;
+  }
+  .lane-box.north { top: 0; left: 50%; transform: translateX(-50%); flex-direction: column; }
+  .lane-box.south { bottom: 0; left: 50%; transform: translateX(-50%); flex-direction: column-reverse; }
+  .lane-box.west  { left: 0; top: 50%; transform: translateY(-50%); flex-direction: row; }
+  .lane-box.east  { right: 0; top: 50%; transform: translateY(-50%); flex-direction: row-reverse; }
+
+  .signal-light {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    background: #080f18;
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 8px 6px;
+    width: 30px;
+    transition: border-color 0.3s;
+  }
+  .signal-light.active { border-color: var(--green); box-shadow: 0 0 20px rgba(0,255,157,0.3); }
+  .signal-light.emergency-active { border-color: var(--red); box-shadow: 0 0 20px rgba(255,61,90,0.4), 0 0 40px rgba(255,61,90,0.2); }
+  .sl-dot { width: 10px; height: 10px; border-radius: 50%; transition: all 0.3s; }
+  .sl-dot.red { background: #200a0e; }
+  .sl-dot.amber { background: #1f1400; }
+  .sl-dot.green { background: #001a0a; }
+  .signal-light.active .sl-dot.red { background: #200a0e; }
+  .signal-light.active .sl-dot.amber { background: #1f1400; }
+  .signal-light.active .sl-dot.green { background: var(--green); box-shadow: 0 0 8px var(--green); }
+  .signal-light.red-active .sl-dot.red { background: var(--red); box-shadow: 0 0 8px var(--red); }
+  .signal-light.emergency-active .sl-dot.red { background: var(--red); box-shadow: 0 0 8px var(--red); animation: flashRed 0.5s ease-in-out infinite; }
+  @keyframes flashRed { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+  .lane-info {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 8px 10px;
+    min-width: 80px;
+    text-align: center;
+  }
+  .lane-dir {
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: var(--dim);
+    text-transform: uppercase;
+    font-family: 'Share Tech Mono', monospace;
+  }
+  .lane-count {
+    font-size: 22px;
+    font-weight: 700;
+    color: #fff;
+    line-height: 1.2;
+    font-family: 'Share Tech Mono', monospace;
+  }
+  .lane-weight {
+    font-size: 10px;
+    color: var(--accent);
+    font-family: 'Share Tech Mono', monospace;
+  }
+  .lane-emergency-tag {
+    font-size: 9px;
+    color: var(--red);
+    letter-spacing: 1px;
+    animation: flashRed 0.8s ease-in-out infinite;
+  }
+
+  /* Queue bubbles */
+  .queue-bubbles {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
+    justify-content: center;
+    max-width: 100px;
+  }
+  .vbubble {
+    font-size: 14px;
+    line-height: 1;
+    filter: drop-shadow(0 0 3px rgba(0,212,255,0.3));
+    cursor: default;
+    transition: transform 0.2s;
+  }
+  .vbubble:hover { transform: scale(1.3); }
+  .vbubble.emergency { filter: drop-shadow(0 0 6px rgba(255,61,90,0.8)); animation: pulse 0.8s ease-in-out infinite; }
+  @keyframes pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.15); } }
+
+  /* ── Right Column ── */
+  .right-col {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  /* ── Controls ── */
+  .controls-body { padding: 20px; }
+  .form-group { margin-bottom: 14px; }
+  label {
+    display: block;
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: var(--dim);
+    text-transform: uppercase;
+    margin-bottom: 6px;
+    font-family: 'Share Tech Mono', monospace;
+  }
+  select, input {
+    width: 100%;
+    background: #080f18;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    color: var(--text);
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 15px;
+    font-weight: 500;
+    padding: 8px 12px;
+    outline: none;
+    transition: border-color 0.2s;
+    appearance: none;
+  }
+  select:focus, input:focus { border-color: var(--accent); }
+  select option { background: #080f18; }
+
+  .btn {
+    width: 100%;
+    border: none;
+    border-radius: 3px;
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    padding: 11px;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+    overflow: hidden;
+  }
+  .btn::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: rgba(255,255,255,0.1);
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+  .btn:hover::after { opacity: 1; }
+  .btn:active { transform: scale(0.98); }
+
+  .btn-add {
+    background: linear-gradient(135deg, #003d55, #005a7a);
+    color: var(--accent);
+    border: 1px solid #00506e;
+  }
+  .btn-cycle {
+    background: linear-gradient(135deg, #003322, #004d33);
+    color: var(--green);
+    border: 1px solid #005c3c;
+    margin-top: 6px;
+  }
+  .btn-simulate {
+    background: linear-gradient(135deg, #1a0d00, #2d1500);
+    color: var(--amber);
+    border: 1px solid #3d1e00;
+    margin-top: 6px;
+  }
+  .btn-reset {
+    background: linear-gradient(135deg, #1a0008, #2d0010);
+    color: var(--red);
+    border: 1px solid #3d0018;
+    margin-top: 6px;
+  }
+
+  /* ── Log Panel ── */
+  .log-body {
+    padding: 0;
+    max-height: 280px;
+    overflow-y: auto;
+  }
+  .log-body::-webkit-scrollbar { width: 4px; }
+  .log-body::-webkit-scrollbar-track { background: transparent; }
+  .log-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .log-entry {
+    display: flex;
+    gap: 10px;
+    padding: 8px 16px;
+    border-bottom: 1px solid rgba(26,48,80,0.5);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px;
+    line-height: 1.4;
+    animation: slideIn 0.3s ease;
+  }
+  @keyframes slideIn { from { opacity:0; transform: translateX(-10px); } to { opacity:1; transform: none; } }
+  .log-time { color: var(--dim); flex-shrink: 0; }
+  .log-msg { color: var(--text); }
+  .log-msg.success { color: var(--green); }
+  .log-msg.warning { color: var(--amber); }
+  .log-msg.emergency { color: var(--red); }
+  .log-msg.info { color: var(--accent); }
+
+  /* ── Flash overlay ── */
+  .flash-overlay {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 999;
+    opacity: 0;
+    transition: opacity 0.1s;
+  }
+  .flash-overlay.green { background: rgba(0,255,157,0.05); }
+  .flash-overlay.red { background: rgba(255,61,90,0.08); }
+  .flash-overlay.active { opacity: 1; }
+
+  /* ── Notification toast ── */
+  .toast {
+    position: fixed;
+    top: 24px; left: 50%;
+    transform: translateX(-50%) translateY(-80px);
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 12px 24px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 13px;
+    letter-spacing: 1px;
+    z-index: 1000;
+    transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+    white-space: nowrap;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+  .toast.emergency { color: var(--red); border-color: var(--red); background: #0d0004; }
+  .toast.success { color: var(--green); border-color: var(--green); }
+  .toast.info { color: var(--accent); border-color: var(--accent); }
+
+  /* ── Sim progress ── */
+  .sim-bar-wrap { padding: 12px 20px; }
+  .sim-bar-bg {
+    background: #080f18;
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    height: 6px;
+    overflow: hidden;
+  }
+  .sim-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+    width: 0%;
+    transition: width 0.4s ease;
+    box-shadow: 0 0 8px var(--accent);
+  }
+  .sim-label {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    color: var(--dim);
+    text-align: center;
+    margin-top: 6px;
+    letter-spacing: 2px;
+  }
+
+  @media (max-width: 900px) {
+    .main-grid { grid-template-columns: 1fr; }
+    .header-stats { gap: 16px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="flash-overlay" id="flashOverlay"></div>
+<div class="toast" id="toast"></div>
+
+<div class="container">
+
+  <!-- Header -->
+  <header>
+    <div class="logo">
+      <div class="traffic-light-mini">
+        <div class="light-dot r"></div>
+        <div class="light-dot a"></div>
+        <div class="light-dot g"></div>
+      </div>
+      <div class="logo-text">
+        <h1>Smart<span>Flow</span></h1>
+        <p>Intelligent Traffic Controller v1.0</p>
+      </div>
+    </div>
+    <div class="header-stats">
+      <div class="hstat">
+        <div class="hstat-val" id="statCycles">0</div>
+        <div class="hstat-label">Cycles</div>
+      </div>
+      <div class="hstat">
+        <div class="hstat-val cleared" id="statCleared">0</div>
+        <div class="hstat-label">Cleared</div>
+      </div>
+      <div class="hstat">
+        <div class="hstat-val emergency" id="statEmergency">0</div>
+        <div class="hstat-label">Overrides</div>
+      </div>
+      <div class="hstat">
+        <div class="hstat-val" id="statQueued">0</div>
+        <div class="hstat-label">Queued</div>
+      </div>
+    </div>
+  </header>
+
+  <div class="main-grid">
+
+    <!-- Intersection Visualizer -->
+    <div class="panel intersection-panel">
+      <div class="panel-header">
+        <div class="panel-header-dot"></div>
+        <span class="panel-title">Live Intersection — 4-Way Signal Control</span>
+      </div>
+      <div class="intersection-canvas">
+        <div class="road-grid">
+          <div class="road-h"></div>
+          <div class="road-v"></div>
+          <div class="road-center"><div class="road-center-label">SMART<br>FLOW</div></div>
+
+          <!-- North -->
+          <div class="lane-box north" style="top:0; left:50%; transform:translateX(-50%);">
+            <div class="lane-info">
+              <div class="lane-dir">North</div>
+              <div class="lane-count" id="count-North">0</div>
+              <div class="lane-weight" id="weight-North">W:0</div>
+              <div class="lane-emergency-tag" id="emg-North" style="display:none">⚠ EMRG</div>
+            </div>
+            <div class="queue-bubbles" id="bubbles-North"></div>
+            <div class="signal-light" id="signal-North">
+              <div class="sl-dot red"></div>
+              <div class="sl-dot amber"></div>
+              <div class="sl-dot green"></div>
+            </div>
+          </div>
+
+          <!-- South -->
+          <div class="lane-box south" style="bottom:0; left:50%; transform:translateX(-50%);">
+            <div class="lane-info">
+              <div class="lane-dir">South</div>
+              <div class="lane-count" id="count-South">0</div>
+              <div class="lane-weight" id="weight-South">W:0</div>
+              <div class="lane-emergency-tag" id="emg-South" style="display:none">⚠ EMRG</div>
+            </div>
+            <div class="queue-bubbles" id="bubbles-South"></div>
+            <div class="signal-light" id="signal-South">
+              <div class="sl-dot red"></div>
+              <div class="sl-dot amber"></div>
+              <div class="sl-dot green"></div>
+            </div>
+          </div>
+
+          <!-- West -->
+          <div class="lane-box west" style="left:0; top:50%; transform:translateY(-50%);">
+            <div class="lane-info" style="min-width:70px;">
+              <div class="lane-dir">West</div>
+              <div class="lane-count" id="count-West">0</div>
+              <div class="lane-weight" id="weight-West">W:0</div>
+              <div class="lane-emergency-tag" id="emg-West" style="display:none">⚠ EMRG</div>
+            </div>
+            <div class="queue-bubbles" id="bubbles-West" style="max-width:70px;"></div>
+            <div class="signal-light" id="signal-West">
+              <div class="sl-dot red"></div>
+              <div class="sl-dot amber"></div>
+              <div class="sl-dot green"></div>
+            </div>
+          </div>
+
+          <!-- East -->
+          <div class="lane-box east" style="right:0; top:50%; transform:translateY(-50%);">
+            <div class="lane-info" style="min-width:70px;">
+              <div class="lane-dir">East</div>
+              <div class="lane-count" id="count-East">0</div>
+              <div class="lane-weight" id="weight-East">W:0</div>
+              <div class="lane-emergency-tag" id="emg-East" style="display:none">⚠ EMRG</div>
+            </div>
+            <div class="queue-bubbles" id="bubbles-East" style="max-width:70px;"></div>
+            <div class="signal-light" id="signal-East">
+              <div class="sl-dot red"></div>
+              <div class="sl-dot amber"></div>
+              <div class="sl-dot green"></div>
+            </div>
+          </div>
+
+        </div><!-- /road-grid -->
+      </div><!-- /intersection-canvas -->
+
+      <!-- Sim bar (hidden by default) -->
+      <div class="sim-bar-wrap" id="simBarWrap" style="display:none">
+        <div class="sim-bar-bg"><div class="sim-bar-fill" id="simBarFill"></div></div>
+        <div class="sim-label" id="simLabel">SIMULATING...</div>
+      </div>
+    </div>
+
+    <!-- Right Column -->
+    <div class="right-col">
+
+      <!-- Controls -->
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-header-dot" style="background:var(--accent2);box-shadow:0 0 6px var(--accent2)"></div>
+          <span class="panel-title">Vehicle Management</span>
+        </div>
+        <div class="controls-body">
+          <div class="form-group">
+            <label>Direction</label>
+            <select id="selDirection">
+              <option>North</option>
+              <option>South</option>
+              <option>East</option>
+              <option>West</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Vehicle Type</label>
+            <select id="selVehicle">
+              <option value="Car">🚗 Car (W:1)</option>
+              <option value="Motorcycle">🏍 Motorcycle (W:1)</option>
+              <option value="Truck">🚛 Truck (W:3)</option>
+              <option value="Bus">🚌 Bus (W:5)</option>
+              <option value="Ambulance">🚑 Ambulance (W:100) — EMERGENCY</option>
+              <option value="Fire Truck">🚒 Fire Truck (W:100) — EMERGENCY</option>
+              <option value="Police">🚓 Police (W:100) — EMERGENCY</option>
+            </select>
+          </div>
+          <button class="btn btn-add" onclick="addVehicle()">⊕ &nbsp;Add Vehicle to Queue</button>
+          <button class="btn btn-cycle" onclick="runCycle()">▶ &nbsp;Run Signal Cycle</button>
+          <button class="btn btn-simulate" onclick="runSimulation()">⚡ &nbsp;Auto Simulate (10 Cycles)</button>
+          <button class="btn btn-reset" onclick="resetAll()">↺ &nbsp;Reset Intersection</button>
+        </div>
+      </div>
+
+      <!-- Activity Log -->
+      <div class="panel" style="flex:1">
+        <div class="panel-header">
+          <div class="panel-header-dot" style="background:var(--amber);box-shadow:0 0 6px var(--amber)"></div>
+          <span class="panel-title">Activity Log</span>
+        </div>
+        <div class="log-body" id="logBody">
+          <div class="log-entry">
+            <span class="log-time">00:00:00</span>
+            <span class="log-msg info">SmartFlow controller initialized. All signals RED.</span>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /right-col -->
+  </div><!-- /main-grid -->
+</div><!-- /container -->
+
+<script>
+// ────────────────────────────────────────────────────────────────
+// SmartFlow Core Engine (JS port of Python logic)
+// ────────────────────────────────────────────────────────────────
+const VEHICLE_WEIGHTS = {
+  'Car': 1, 'Motorcycle': 1, 'Truck': 3, 'Bus': 5,
+  'Ambulance': 100, 'Fire Truck': 100, 'Police': 100
+};
+const VEHICLE_ICONS = {
+  'Car': '🚗', 'Motorcycle': '🏍', 'Truck': '🚛', 'Bus': '🚌',
+  'Ambulance': '🚑', 'Fire Truck': '🚒', 'Police': '🚓'
+};
+const EMERGENCY_TYPES = new Set(['Ambulance', 'Fire Truck', 'Police']);
+const DIRECTIONS = ['North', 'South', 'East', 'West'];
+
+let lanes = {};
+let stats = { cycles: 0, cleared: 0, overrides: 0 };
+let simRunning = false;
+
+function initLanes() {
+  lanes = {};
+  DIRECTIONS.forEach(d => lanes[d] = []);
+}
+
+function laneScore(dir) {
+  const q = lanes[dir];
+  const hasEmg = q.some(v => EMERGENCY_TYPES.has(v));
+  const totalW = q.reduce((s, v) => s + VEHICLE_WEIGHTS[v], 0);
+  return [hasEmg ? 1 : 0, totalW, q.length];
+}
+
+function compareScores(a, b) {
+  for (let i = 0; i < a.length; i++) {
+    if (b[i] !== a[i]) return b[i] - a[i];
+  }
+  return 0;
+}
+
+function getRankedLanes() {
+  return DIRECTIONS
+    .filter(d => lanes[d].length > 0)
+    .sort((a, b) => compareScores(laneScore(a), laneScore(b)));
+}
+
+// ────────────────────────────────────────────────────────────────
+// UI Update
+// ────────────────────────────────────────────────────────────────
+function updateUI(greenDir = null) {
+  DIRECTIONS.forEach(dir => {
+    const q = lanes[dir];
+    const hasEmg = q.some(v => EMERGENCY_TYPES.has(v));
+    const totalW = q.reduce((s, v) => s + VEHICLE_WEIGHTS[v], 0);
+    const isGreen = dir === greenDir;
+
+    document.getElementById(`count-${dir}`).textContent = q.length;
+    document.getElementById(`weight-${dir}`).textContent = `W:${totalW}`;
+
+    const emgTag = document.getElementById(`emg-${dir}`);
+    emgTag.style.display = hasEmg ? 'block' : 'none';
+
+    // Bubbles
+    const bubbleEl = document.getElementById(`bubbles-${dir}`);
+    bubbleEl.innerHTML = q.slice(0, 8).map(v =>
+      `<span class="vbubble ${EMERGENCY_TYPES.has(v) ? 'emergency' : ''}" title="${v}">${VEHICLE_ICONS[v]}</span>`
+    ).join('') + (q.length > 8 ? `<span class="vbubble" style="font-size:10px;color:var(--dim)">+${q.length-8}</span>` : '');
+
+    // Signal light
+    const sig = document.getElementById(`signal-${dir}`);
+    sig.className = 'signal-light';
+    if (isGreen && hasEmg) sig.classList.add('emergency-active');
+    else if (isGreen) sig.classList.add('active');
+    else sig.classList.add('red-active');
+  });
+
+  // Header stats
+  document.getElementById('statCycles').textContent = stats.cycles;
+  document.getElementById('statCleared').textContent = stats.cleared;
+  document.getElementById('statEmergency').textContent = stats.overrides;
+  const totalQueued = DIRECTIONS.reduce((s, d) => s + lanes[d].length, 0);
+  document.getElementById('statQueued').textContent = totalQueued;
+}
+
+// ────────────────────────────────────────────────────────────────
+// Logging
+// ────────────────────────────────────────────────────────────────
+function addLog(msg, type = 'info') {
+  const now = new Date();
+  const t = now.toTimeString().slice(0, 8);
+  const logBody = document.getElementById('logBody');
+  const entry = document.createElement('div');
+  entry.className = 'log-entry';
+  entry.innerHTML = `<span class="log-time">${t}</span><span class="log-msg ${type}">${msg}</span>`;
+  logBody.insertBefore(entry, logBody.firstChild);
+  // Keep max 60 entries
+  while (logBody.children.length > 60) logBody.removeChild(logBody.lastChild);
+}
+
+// ────────────────────────────────────────────────────────────────
+// Toast
+// ────────────────────────────────────────────────────────────────
+let toastTimer;
+function showToast(msg, type = 'info') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = `toast ${type} show`;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.classList.remove('show'); }, 2200);
+}
+
+// ────────────────────────────────────────────────────────────────
+// Flash
+// ────────────────────────────────────────────────────────────────
+function flash(color) {
+  const f = document.getElementById('flashOverlay');
+  f.className = `flash-overlay ${color} active`;
+  setTimeout(() => f.classList.remove('active'), 300);
+}
+
+// ────────────────────────────────────────────────────────────────
+// Actions
+// ────────────────────────────────────────────────────────────────
+function addVehicle() {
+  const dir = document.getElementById('selDirection').value;
+  const vtype = document.getElementById('selVehicle').value;
+  lanes[dir].push(vtype);
+  const isEmg = EMERGENCY_TYPES.has(vtype);
+  const icon = VEHICLE_ICONS[vtype];
+
+  if (isEmg) {
+    addLog(`${icon} ${vtype} added to ${dir} lane — EMERGENCY DETECTED`, 'emergency');
+    showToast(`🚨 ${vtype} → ${dir}`, 'emergency');
+    flash('red');
+  } else {
+    addLog(`${icon} ${vtype} added to ${dir} lane (W:${VEHICLE_WEIGHTS[vtype]})`, 'success');
+  }
+  updateUI();
+}
+
+function runCycle() {
+  if (simRunning) return;
+  const ranked = getRankedLanes();
+
+  if (ranked.length === 0) {
+    addLog('All lanes empty — no signal change.', 'warning');
+    showToast('All lanes empty', 'info');
+    updateUI(null);
+    return;
+  }
+
+  const winDir = ranked[0];
+  const q = lanes[winDir];
+  const hasEmg = q.some(v => EMERGENCY_TYPES.has(v));
+  const clearCount = Math.max(1, Math.ceil(q.length / 2));
+  const cleared = q.splice(0, clearCount);
+  lanes[winDir] = q;
+
+  stats.cycles++;
+  stats.cleared += cleared.length;
+  if (hasEmg) stats.overrides++;
+
+  const reason = hasEmg ? '🚨 EMERGENCY OVERRIDE' : '📊 Highest weighted score';
+  const score = laneScore(winDir);
+
+  addLog(
+    `Cycle ${stats.cycles} | GREEN → ${winDir} | ${reason} | Cleared: ${cleared.length}`,
+    hasEmg ? 'emergency' : 'success'
+  );
+  showToast(`🟢 GREEN → ${winDir}`, hasEmg ? 'emergency' : 'success');
+  flash('green');
+
+  updateUI(winDir);
+  setTimeout(() => updateUI(null), 1200);
+}
+
+// ────────────────────────────────────────────────────────────────
+// Simulation
+// ────────────────────────────────────────────────────────────────
+const SPAWN_POOL = [
+  ...Array(50).fill('Car'),
+  ...Array(15).fill('Motorcycle'),
+  ...Array(10).fill('Truck'),
+  ...Array(10).fill('Bus'),
+  ...Array(5).fill('Ambulance'),
+  ...Array(5).fill('Fire Truck'),
+  ...Array(5).fill('Police')
+];
+
+function randomVehicle() { return SPAWN_POOL[Math.floor(Math.random() * SPAWN_POOL.length)]; }
+function randomDir() { return DIRECTIONS[Math.floor(Math.random() * 4)]; }
+
+async function runSimulation() {
+  if (simRunning) return;
+  simRunning = true;
+  const totalCycles = 10;
+
+  document.getElementById('simBarWrap').style.display = 'block';
+  addLog('⚡ Automated simulation started — 10 cycles', 'info');
+  showToast('⚡ Simulation Starting...', 'info');
+
+  for (let c = 1; c <= totalCycles; c++) {
+    // Arrivals
+    const arrivals = Math.floor(Math.random() * 4);
+    for (let i = 0; i < arrivals; i++) {
+      const dir = randomDir();
+      const vtype = randomVehicle();
+      lanes[dir].push(vtype);
+      const isEmg = EMERGENCY_TYPES.has(vtype);
+      if (isEmg) {
+        addLog(`${VEHICLE_ICONS[vtype]} ${vtype} arrives → ${dir} [EMERGENCY]`, 'emergency');
+        flash('red');
+      }
+    }
+
+    await new Promise(r => setTimeout(r, 300));
+
+    // Cycle
+    const ranked = getRankedLanes();
+    if (ranked.length > 0) {
+      const winDir = ranked[0];
+      const q = lanes[winDir];
+      const hasEmg = q.some(v => EMERGENCY_TYPES.has(v));
+      const clearCount = Math.max(1, Math.ceil(q.length / 2));
+      const cleared = q.splice(0, clearCount);
+      lanes[winDir] = q;
+      stats.cycles++;
+      stats.cleared += cleared.length;
+      if (hasEmg) stats.overrides++;
+      const reason = hasEmg ? '🚨 EMERGENCY OVERRIDE' : '📊 Score';
+      addLog(`Sim Cycle ${c}/10 | GREEN → ${winDir} | ${reason} | Cleared: ${cleared.length}`, hasEmg ? 'emergency' : 'success');
+      flash('green');
+      updateUI(winDir);
+    } else {
+      addLog(`Sim Cycle ${c}/10 | All lanes empty`, 'warning');
+      updateUI(null);
+    }
+
+    // Update progress bar
+    const pct = (c / totalCycles) * 100;
+    document.getElementById('simBarFill').style.width = pct + '%';
+    document.getElementById('simLabel').textContent = `SIMULATING — CYCLE ${c} / ${totalCycles}`;
+
+    await new Promise(r => setTimeout(r, 700));
+    updateUI(null);
+    await new Promise(r => setTimeout(r, 200));
+  }
+
+  document.getElementById('simBarFill').style.width = '100%';
+  document.getElementById('simLabel').textContent = 'SIMULATION COMPLETE';
+  addLog('✅ Simulation complete. See stats above.', 'success');
+  showToast('✅ Simulation Complete!', 'success');
+
+  setTimeout(() => {
+    document.getElementById('simBarWrap').style.display = 'none';
+    document.getElementById('simBarFill').style.width = '0%';
+  }, 2000);
+
+  simRunning = false;
+}
+
+function resetAll() {
+  initLanes();
+  stats = { cycles: 0, cleared: 0, overrides: 0 };
+  document.getElementById('logBody').innerHTML =
+    `<div class="log-entry"><span class="log-time">${new Date().toTimeString().slice(0,8)}</span><span class="log-msg info">System reset. All signals RED.</span></div>`;
+  document.getElementById('simBarWrap').style.display = 'none';
+  simRunning = false;
+  updateUI(null);
+  showToast('↺ System Reset', 'info');
+}
+
+// ────────────────────────────────────────────────────────────────
+// Init
+// ────────────────────────────────────────────────────────────────
+initLanes();
+updateUI();
+</script>
+</body>
+</html>
